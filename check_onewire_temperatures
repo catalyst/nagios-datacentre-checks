@@ -1,0 +1,117 @@
+#!/usr/bin/env python
+
+"""
+Check that no one-wire sensors in the given owfs path are over or under the threshold temperatures.
+
+Michael Fincham <michael.fincham@catalyst.net.nz>.
+
+This file is licensed under the GNU General Public License version 3.
+"""
+
+import argparse
+import sys
+import os
+
+OWFS_PATH = "/srv/owfs"
+
+NAGIOS_OK = 0
+NAGIOS_WARNING = 1
+NAGIOS_CRITICAL = 2
+NAGIOS_UNKNOWN = 3
+
+def read_file_float(path):
+    """Read a float from a file"""
+    with open(path, 'r') as fp:
+        return float(fp.read())
+
+def check_onewire_temperatures(path, low_warning, low_critical, high_warning, high_critical):
+    """
+    Checks all sensors in `path' against given thresholds, returns a tuple of
+    (descriptive_text, nagios_code)
+    """
+
+    low_warning = int(low_warning)
+    low_critical = int(low_critical)
+    high_warning = int(high_warning)
+    high_critical = int(high_critical)
+
+    low_critical_sensors = []
+    low_warning_sensors = []
+    high_warning_sensors = []
+    high_critical_sensors = []
+    ok_sensors = []
+
+    try:
+        sensor_names = [sensor for sensor in os.listdir(path) if 'fasttemp' in os.listdir('%s/%s' % (path, sensor))]
+        if not sensor_names:
+            raise
+    except Exception as e:
+        return('error: unable to find any sensors at %s' % path, NAGIOS_UNKNOWN)
+
+    for sensor_name in sensor_names:
+        try:
+            sensor_value = read_file_float('%s/%s/fasttemp' % (path, sensor_name))
+        except Exception as e:
+            return('error: could not read from %s/%s (%s)' % (path, sensor_name, str(e)), NAGIOS_UNKNOWN)
+
+        problem = False
+
+        if sensor_value <= low_critical:
+            low_critical_sensors.append(sensor_name)
+            problem = True
+
+        if sensor_value <= low_warning and sensor_value > low_critical:
+            low_warning_sensors.append(sensor_name)
+            problem = True
+
+        if sensor_value >= high_critical:
+            high_critical_sensors.append(sensor_name)
+            problem = True
+
+        if sensor_value >= high_warning and sensor_value < high_critical:
+            high_warning_sensors.append(sensor_name)
+            problem = True
+
+        if not problem:
+            ok_sensors.append(sensor_name)
+
+    result_code = NAGIOS_OK
+    results = []
+
+    if low_warning_sensors:
+        results.append('%i sensors (%s) below low-warning of %i degrees' % (len(low_warning_sensors), ', '.join(low_warning_sensors), low_warning))
+        result_code = NAGIOS_WARNING
+
+    if high_warning_sensors:
+        results.append('%i sensors (%s) above high-warning of %i degrees' % (len(high_warning_sensors), ', '.join(high_warning_sensors), high_warning))
+        result_code = NAGIOS_WARNING
+
+    if low_critical_sensors:
+        results.append('%i sensors (%s) below low-critical of %i degrees' % (len(low_critical_sensors), ', '.join(low_critical_sensors), low_critical))
+        result_code = NAGIOS_CRITICAL
+
+    if high_critical_sensors:
+        results.append('%i sensors (%s) above high-critical of %i degrees' % (len(high_critical_sensors), ', '.join(high_critical_sensors), high_critical))
+        result_code = NAGIOS_CRITICAL
+
+    if result_code == NAGIOS_OK:
+        result_text = '%i sensors OK' % len(ok_sensors)
+    else:
+        result_text = ', '.join(results)
+
+    return (result_text, result_code)
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--low-warning', metavar="DEGREES", type=int, default="10", help='temperature in degrees Celsius for low-warning state, defaults to 10')
+    parser.add_argument('--low-critical', metavar="DEGREES", type=int, default="0", help='temperature in degrees Celsius for low-critical state, defaults to 0')
+    parser.add_argument('--high-warning', metavar="DEGREES", type=int, default="35", help='temperature in degrees Celsius for high-warning state, defaults to 35')
+    parser.add_argument('--high-critical', metavar="DEGREES", type=int, default="40", help='temperature in degrees Celsius for high-critical state, defaults to 40')
+    parser.add_argument('--owfs-path', metavar="PATH", type=str, default=OWFS_PATH, help='path to owfs filesystem, defaults to %s' % OWFS_PATH)
+    args = parser.parse_args()
+
+    description, return_code = check_onewire_temperatures(args.owfs_path, args.low_warning, args.low_critical, args.high_warning, args.high_critical)
+
+    sys.stdout.write("%s\n" % description)
+    sys.exit(return_code)

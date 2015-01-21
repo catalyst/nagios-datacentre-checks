@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+
+"""
+Check that at least one one-wire temperature sensor responds one each bus of the given owfs path.
+
+Michael Fincham <michael.fincham@catalyst.net.nz>.
+
+This file is licensed under the GNU General Public License version 3.
+"""
+
+import argparse
+import sys
+import os
+import subprocess
+
+OWFS_PATH = "/srv/owfs"
+TEMPERATURE_CHECK = "/usr/lib/nagios/plugins/check_onewire_temperatures"
+BUS_COUNT = 2
+
+NAGIOS_OK = 0
+NAGIOS_WARNING = 1
+NAGIOS_CRITICAL = 2
+NAGIOS_UNKNOWN = 3
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--owfs-path', metavar="PATH", type=str, default=OWFS_PATH, help='path to owfs filesystem, defaults to %s' % OWFS_PATH)
+    parser.add_argument('--expected-bus-count', metavar="COUNT", type=int, default=BUS_COUNT, help='expected number of buses to find, defaults to %i' % BUS_COUNT)
+    args = parser.parse_args()
+
+    try:
+        buses = [path for path in os.listdir(args.owfs_path) if path.startswith('bus.')]
+    except:
+        sys.stdout.write('error: no buses found at %s\n' % args.owfs_path)
+        sys.exit(NAGIOS_UNKNOWN)
+
+    if len(buses) < args.expected_bus_count:
+        sys.stdout.write('%i buses missing (expected %i, found %i)\n' % ((args.expected_bus_count - len(buses)), args.expected_bus_count, len(buses)))
+        sys.exit(NAGIOS_CRITICAL)
+
+    FNULL = open(os.devnull, 'w')
+    fails = []
+    ok = []
+
+    for bus in buses:
+        if subprocess.check_call(('%s --owfs-path %s/%s' % (TEMPERATURE_CHECK, args.owfs_path, bus)).split(), stdout=FNULL, stderr=FNULL):
+            fails.append(bus)
+        else:
+            ok.append(bus)
+
+    if fails:
+        sys.stdout.write("%i buses (%s) did not return any sensor data\n" % (len(fails), ', '.join(fails)))
+        sys.exit(NAGIOS_CRITICAL)
+    else:
+        sys.stdout.write("%i buses OK\n" % len(ok))
+        sys.exit(NAGIOS_OK)
