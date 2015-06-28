@@ -12,7 +12,6 @@ usage: check_onewire_temperatures [-h] [--low-warning DEGREES]
 
 Check that no one-wire sensors in the given owfs path are over or under the
 threshold temperatures. Michael Fincham &lt;michael.fincham@catalyst.net.nz&gt;.
-This file is licensed under the GNU General Public License version 3.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -39,9 +38,8 @@ Requirements: check_onewire_temperatures
 usage: check_onewire_buses [-h] [--owfs-path PATH]
                            [--expected-bus-count COUNT]
 
-Check that at least one one-wire temperature sensor responds one each bus of
-the given owfs path. Michael Fincham &lt;michael.fincham@catalyst.net.nz&gt;. This
-file is licensed under the GNU General Public License version 3.
+Check that at least one one-wire temperature sensor responds on each bus of
+the given owfs path. Michael Fincham &lt;michael.fincham@catalyst.net.nz&gt;.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -61,8 +59,7 @@ usage: check_ups [-h] [--configuration-file FILE]
                  {alarms,temperature,input,output}
 
 Check various aspects of an SNMP UPS. Michael Fincham
-&lt;michael.fincham@catalyst.net.nz&gt;. This file is licensed under the GNU General
-Public License version 3.
+&lt;michael.fincham@catalyst.net.nz&gt;.
 
 positional arguments:
   {alarms,temperature,input,output}
