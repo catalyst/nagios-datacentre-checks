@@ -16,7 +16,7 @@
 #
 
 """
-Check that at least one one-wire temperature sensor responds one each bus of the given owfs path.
+Check that at least one one-wire temperature sensor responds on each bus of the given owfs path.
 
 Michael Fincham <michael.fincham@catalyst.net.nz>.
 """
