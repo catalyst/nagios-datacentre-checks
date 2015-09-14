@@ -71,3 +71,27 @@ optional arguments:
                         path to configuration file, defaults to /etc/ups-
                         monitoring.conf
 </pre>
+
+## check_generator
+
+Requirements: [pymodbus](https://pypi.python.org/pypi/pymodbus), [pyserial](https://pypi.python.org/pypi/pyserial), easygen.py (included in archive)
+
+`/etc/generator-monitoring.conf` must exist and be filled with values provided by your generator vendor. The plugin will not return useful results until this is done.
+
+<pre>
+usage: check_generator [-h] [--configuration-file FILE]
+                       {run_status,battery,lines}
+
+Basic checks for various aspects of a generator. Michael Fincham
+&lt;michael.fincham@catalyst.net.nz&gt;.
+
+positional arguments:
+  {run_status,battery,lines}
+                        which check to run
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --configuration-file FILE
+                        path to configuration file, defaults to /etc
+                        /generator-monitoring.conf
+</pre>

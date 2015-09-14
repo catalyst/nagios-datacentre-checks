@@ -1,0 +1,186 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2015 Catalyst.net Ltd
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+"""
+Basic checks for various aspects of a generator.
+
+Michael Fincham <michael.fincham@catalyst.net.nz>.
+"""
+
+import argparse
+import sys
+import ConfigParser
+
+import easygen
+
+CONFIG_FILE = "/etc/generator-monitoring.conf"
+
+class GeneratorChecker(object):
+
+    NAGIOS_OK = 0
+    NAGIOS_WARNING = 1
+    NAGIOS_CRITICAL = 2
+    NAGIOS_UNKNOWN = 3
+
+    discrete_inputs_flags = {
+        14: "ATS request",
+        8: "Running",
+    }
+
+    @staticmethod
+    def _decode_flags(bitfield, flags):
+        return [flag for bit, flag in flags.iteritems() if bitfield >> bit & 1]    
+
+    def __init__(self, config_file):
+        """
+        Ensure the configuration file can be loaded and the generator reached.
+        """
+        try:
+            self.config = ConfigParser.ConfigParser()
+            self.config.read(config_file)
+        except:
+            raise RuntimeError('Could not load configuration file %s' % config_file)
+
+        try:
+            self.generator = easygen.EasygenInterface(host=self.config.get('generator','host'), port=int(self.config.get('generator','port')))
+            self.generator.fetch_registers()
+        except:
+            raise RuntimeError('Could not connect to generator at %s' % self.config.get('generator','host'))
+
+    def check_run_status(self):
+        """
+        Check that the generator is in an OK running state.
+
+        ATS request & Running = Warning
+        !ATS request & Running = Critical
+        ATS request & !Running = Critical
+        !ATS request & !Running = OK
+        """
+
+        status = self._decode_flags(
+            self.generator.get_data_by_name('Discrete inputs, status'),
+            GeneratorChecker.discrete_inputs_flags,
+        )
+
+        if 'ATS request' in status and 'Running' in status:
+            return (GeneratorChecker.NAGIOS_WARNING, 'Running due to ATS request')
+        elif 'ATS request' not in status and 'Running' in status:
+            return (GeneratorChecker.NAGIOS_CRITICAL, 'Running without ATS request')
+        elif 'ATS request' in status and 'Running' not in status:
+            return (GeneratorChecker.NAGIOS_CRITICAL, 'Not running when requested to run by ATS')
+        elif 'ATS request' not in status and 'Running' not in status:
+            return (GeneratorChecker.NAGIOS_CRITICAL, 'Not running and no request to run')
+
+        return (GeneratorChecker.NAGIOS_CRITICAL, 'Unrecognised status')
+
+    def check_battery(self):
+        """
+        Check that the battery voltage is within thresholds
+        """
+
+        voltage = self.generator.get_data_by_name('Battery voltage (0.1V)') / 10
+
+        if voltage > float(self.config.get('battery', 'critical_high_voltage')):
+            return (GeneratorChecker.NAGIOS_CRITICAL, '%.1fv exceeds critical threshold of %sv' % (voltage, self.config.get('battery', 'critical_high_voltage')))
+        elif voltage >= float(self.config.get('battery', 'warning_high_voltage')):
+            return (GeneratorChecker.NAGIOS_WARNING, '%.1fv exceeds warning threshold of %sv' % (voltage, self.config.get('battery', 'warning_high_voltage')))
+        elif voltage < float(self.config.get('battery', 'critical_low_voltage')):
+            return (GeneratorChecker.NAGIOS_CRITICAL, '%.1fv is below critical threshold of %sv' % (voltage, self.config.get('battery', 'critical_low_voltage')))
+        elif voltage <= float(self.config.get('battery', 'warning_low_voltage')):
+            return (GeneratorChecker.NAGIOS_WARNING, '%.1fv is below warning threshold of %sv' % (voltage, self.config.get('battery', 'warning_low_voltage')))
+
+        return (GeneratorChecker.NAGIOS_OK, '%.1fv' % voltage)
+
+    def check_lines(self):
+        """
+        Verify that the attributes of the output lines are within configured thresholds
+        """
+
+        flags = self._decode_flags(self.generator.get_data_by_name('Discrete inputs, status'), GeneratorChecker.discrete_inputs_flags)
+
+        if 'ATS request' not in flags and 'Running' not in flags:
+            return (GeneratorChecker.NAGIOS_OK, 'Not running')
+
+        results = {'warning': {}, 'critical': {}}
+        sections = {
+            'voltage': ("Generator: Voltage V L%iN (0.1V)", 0.1),
+            'current': ("Generator: Current I L%i (mA)", 0.001),
+        }
+
+        for section, section_register in sections.iteritems():
+            for line in (1, 2, 3):
+                    for severity in ('warning', 'critical'):
+                        try:
+                            low_threshold = float(self.config.get('lines', '%s_%s_low' % (section, severity)))
+                        except:
+                            raise RuntimeError('Could not find configuration for %s in section [lines]' % ('%s_%s_low' % (section, severity)))
+
+                        try:
+                            high_threshold = float(self.config.get('lines', '%s_%s_high' % (section, severity)))
+                        except:
+                            raise RuntimeError('Could not find configuration for %s in section [lines]' % ('%s_%s_high' % (section, severity)))
+
+                        quantity = self.generator.get_data_by_name(section_register[0] % line) * section_register[1]
+
+                        if quantity < low_threshold:
+                            results[severity][line] = "line %s %s of %s is below minimum of %s" % (line, section, repr(quantity), repr(low_threshold))
+                        elif quantity > high_threshold:
+                            results[severity][line] = "line %s %s of %s exceeds maximum of %s" % (line, section, repr(quantity), repr(high_threshold))
+
+        # issues with a line that are "critical" outweight those which are merely "warning"
+        results['warning'] = {line: result for line, result in results['warning'].iteritems() if line not in results['critical']}
+
+        result_strings = []
+        return_code = GeneratorChecker.NAGIOS_OK
+
+        if results['warning']:
+            return_code = GeneratorChecker.NAGIOS_WARNING
+            result_strings.append("warning: %s" % ", ".join(results['warning'].values()))
+
+        if results['critical']:
+            return_code = GeneratorChecker.NAGIOS_CRITICAL
+            result_strings.append("critical: %s" % ", ".join(results['critical'].values()))
+
+        if not result_strings:
+            result_strings = ('3 lines OK')
+
+        return (return_code, ", ".join(result_strings))
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('check', choices=('run_status', 'battery', 'lines'), help='which check to run')
+    parser.add_argument('--configuration-file', metavar="FILE", type=str, default=CONFIG_FILE, help='path to configuration file, defaults to %s' % CONFIG_FILE)
+    args = parser.parse_args()
+
+    try:
+        checker = GeneratorChecker(args.configuration_file)
+
+        if args.check == 'run_status':
+            return_code, description = checker.check_run_status()
+        elif args.check == 'battery':
+            return_code, description = checker.check_battery()            
+        elif args.check == 'lines':
+            return_code, description = checker.check_lines()
+        else:
+            raise NotImplementedError("no check matching '%s'" % args.check) # this will only happen if not all possible choices in argparse are not implemented
+    except Exception as e:
+        return_code = 3
+        description = "error: unable to run (%s)" % repr(e)
+
+    sys.stdout.write("%s\n" % description)
+    sys.exit(return_code)
