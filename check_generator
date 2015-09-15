@@ -83,7 +83,7 @@ class GeneratorChecker(object):
         elif 'ATS request' in status and 'Running' not in status:
             return (GeneratorChecker.NAGIOS_CRITICAL, 'Not running when requested to run by ATS')
         elif 'ATS request' not in status and 'Running' not in status:
-            return (GeneratorChecker.NAGIOS_CRITICAL, 'Not running and no request to run')
+            return (GeneratorChecker.NAGIOS_OK, 'Not running and no request to run')
 
         return (GeneratorChecker.NAGIOS_CRITICAL, 'Unrecognised status')
 
