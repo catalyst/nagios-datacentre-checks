@@ -16,6 +16,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+"""
+Extract information from an easYgen-1000 generator controller using Modbus over TCP.
+
+Tobi Schulmann <tobias.schulmann@catalyst.net.nz> and Michael Fincham <michael.fincham@catalyst.net.nz>
+"""
+
 from pymodbus.client.sync import ModbusTcpClient
 from contextlib import contextmanager
 
@@ -114,6 +120,10 @@ class EasygenInterface(object):
             self.cli.close()
 
     def fetch_registers(self, *args):
+        """
+        Retrieve and cache the latest data from the controller. Should be called before the get_data_by methods.
+        """
+        
         if args:
             start, number = args
         else:
