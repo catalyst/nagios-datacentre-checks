@@ -95,3 +95,17 @@ optional arguments:
                         path to configuration file, defaults to /etc
                         /generator-monitoring.conf
 </pre>
+
+## check_oob
+
+<pre>
+usage: check_oob [-h] [--interface INTERFACE]
+
+Check that a network device is 'up' and the IPv4 default route is via it.
+Michael Fincham &lt;michael.fincham@catalyst.net.nz&gt;.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --interface INTERFACE
+                        name of interface to monitor, defaults to ppp0
+</pre>

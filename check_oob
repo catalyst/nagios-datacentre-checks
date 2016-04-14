@@ -1,0 +1,72 @@
+#!/usr/bin/env python
+#
+# Copyright (c) 2016 Catalyst.net Ltd
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+"""
+Check that a network device is 'up' and the IPv4 default route is via it.
+
+Michael Fincham <michael.fincham@catalyst.net.nz>.
+"""
+
+import argparse
+import sys
+
+NAGIOS_OK = 0
+NAGIOS_WARNING = 1
+NAGIOS_CRITICAL = 2
+NAGIOS_UNKNOWN = 3
+
+RTF_UP = 0x0001
+
+IFF_UP = 0x1
+IFF_RUNNING = 0x40
+IFF_POINTOPOINT = 0x10
+
+INTERFACE="ppp0"
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--interface', metavar="INTERFACE", type=str, default=INTERFACE, help='name of interface to monitor, defaults to %s' % INTERFACE)
+    args = parser.parse_args()
+
+    sysfs_path = "/sys/class/net/%s" % args.interface
+
+    try:
+        with open("%s/carrier" % sysfs_path, 'r') as fp:
+            carrier = fp.read().strip() == '1'
+    except:
+        sys.stdout.write("%s not found\n" % args.interface)
+        sys.exit(NAGIOS_CRITICAL)
+
+    # the interface must be "up" and then either PPP or "running"
+    if not carrier:
+        sys.stdout.write("%s carrier is down\n" % args.interface)
+        sys.exit(NAGIOS_CRITICAL)
+
+
+    with open('/proc/net/route', 'r') as fp:
+        for line in fp:
+            route = line.strip().split()
+            if route[0] != args.interface:
+                continue
+            if all([c == '0' for c in route[1] + route[7]]): # check that "destination" and "mask" are all zeroes
+                sys.stdout.write("%s is up and the default route\n" % args.interface)
+                sys.exit(NAGIOS_OK)
+
+    sys.stdout.write("%s is not the default route\n" % args.interface)
+    sys.exit(NAGIOS_CRITICAL)
+
