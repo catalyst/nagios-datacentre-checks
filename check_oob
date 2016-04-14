@@ -31,10 +31,6 @@ NAGIOS_UNKNOWN = 3
 
 RTF_UP = 0x0001
 
-IFF_UP = 0x1
-IFF_RUNNING = 0x40
-IFF_POINTOPOINT = 0x10
-
 INTERFACE="ppp0"
 
 if __name__ == "__main__":
@@ -63,7 +59,7 @@ if __name__ == "__main__":
             route = line.strip().split()
             if route[0] != args.interface:
                 continue
-            if all([c == '0' for c in route[1] + route[7]]): # check that "destination" and "mask" are all zeroes
+            if all([c == '0' for c in route[1] + route[7]]) and int(route[3], 16) & RTF_UP: # check that "destination" and "mask" are all zeroes
                 sys.stdout.write("%s is up and the default route\n" % args.interface)
                 sys.exit(NAGIOS_OK)
 
