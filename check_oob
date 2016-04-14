@@ -48,7 +48,7 @@ if __name__ == "__main__":
         sys.stdout.write("%s not found\n" % args.interface)
         sys.exit(NAGIOS_CRITICAL)
 
-    # the interface must be "up" and then either PPP or "running"
+    # carrier == 1 works for both PPP and Ethernet interfaces
     if not carrier:
         sys.stdout.write("%s carrier is down\n" % args.interface)
         sys.exit(NAGIOS_CRITICAL)
